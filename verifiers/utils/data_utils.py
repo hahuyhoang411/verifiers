@@ -4,6 +4,9 @@ from typing import List, Dict, Callable, Any
 
 from datasets import Dataset, load_dataset, concatenate_datasets # type: ignore
 
+import logging
+logger = logging.getLogger(__name__)
+
 def extract_boxed_answer(text: str) -> str | None:
     def find_matching_brace(s: str, start: int) -> int:
         count = 1
@@ -115,7 +118,7 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
         def preprocess_mmlu(x: Dict[str, Any]) -> Dict[str, Any]:
             options = x["choices"]
             answer = x["answer"]
-            question = f"Question: {x["question"]}\n"
+            question = f"Question: {x['question']}\n"
             for i, option in enumerate(options):
                 question += f"\n{mmlu_map[i]}: {option}"
             return {
@@ -129,7 +132,7 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
         def preprocess_mmlu(x: Dict[str, Any]) -> Dict[str, Any]:
             options = x["options"]
             answer = x["answer"]
-            question = f"Question: {x["question"]}\n"
+            question = f"Question: {x['question']}\n"
             for i, option in enumerate(options):
                 question += f"\n{mmlu_map[i]}: {option}"
             return {
@@ -170,6 +173,18 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
                 "task": "code"
             }
         return preprocess_prime_code
+    elif name == "tool_rl":
+        def preprocess_tool_rl(x: Dict[str, Any]) -> Dict[str, Any]:
+            # Direct mapping as column names seem suitable
+            # Ensure 'task' column exists, otherwise default or raise error
+            task = x.get("task", "qa") # Default if task column is missing
+            return {
+                "question": x["question"],
+                "answer": x["answer"],
+                "task": task
+            }
+        return preprocess_tool_rl
+        
     else:
         raise ValueError(f"Dataset {name} not supported for preprocess_dataset.")
 
@@ -177,7 +192,18 @@ def preprocess_dataset(name: str = "gsm8k",
                        split: str | None = None,
                        n: int | None = None,
                        seed: int = 0) -> Dataset:
-    if name == "aime2024":
+
+    if name == "tool_rl":
+        # Use the 'split' argument to choose the configuration ('train' or 'test')
+        config_name = split if split in ["train", "test"] else "train"
+        # Load the 'train' split within the chosen configuration
+        actual_split = 'train'
+        logger.info(f"Loading dataset 'HoangHa/Tool-RL' with config='{config_name}' and split='{actual_split}'")
+        try:
+            dataset = load_dataset("HoangHa/Tool-RL", config_name, split=actual_split) # type: ignore
+        except Exception as e:
+             raise ValueError(f"Failed to load HoangHa/Tool-RL with config='{config_name}', split='{actual_split}'. Error: {e}")
+    elif name == "aime2024":
         if split is None:
             split = "train"
         dataset = load_dataset("HuggingFaceH4/aime_2024")[split] # type: ignore
