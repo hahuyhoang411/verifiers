@@ -17,19 +17,23 @@ class ToolRubric(Rubric):
             self.mc_reward_func,
             self.math_reward_func,
             self.code_reward_func,
+            self.qa_reward_func,
             self.correct_answer_reward_func,
+            self.no_tool_bonus_reward_func, # Answer correctly if no tools 
             self.tool_execution_reward_func,
             self.parser.get_format_reward_func(),
             self.parser.get_xml_reward_func(),
         ]
         self.reward_weights = [
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.5,
-            0.25,
-            0.25,
+            0.0,  # mc
+            0.0,  # math
+            0.0,  # code
+            0.0,  # qa
+            1.0,  # correct_answer
+            0.5,  # no_tool_bonus
+            0.5,  # tool_execution
+            0.25, # format
+            0.25, # xml
         ]
         for tool_name in self.tools.keys():
             self.reward_funcs.append(self.get_named_tool_reward_func(tool_name))
@@ -137,7 +141,27 @@ class ToolRubric(Rubric):
                 reward = None
             rewards.append(reward)
         return rewards
-    
+
+    def qa_reward_func(self, completions, answer, task, **kwargs) -> List[float | None]:
+        """Reward function for simple QA - checks for exact or near-exact match."""
+        rewards = []
+        for completion, ans, t in zip(completions, answer, task):
+            if t == "qa": # Use your chosen task tag
+                response = self.get_last_answer(completion)
+                if response is None:
+                    reward = 0.0
+                else:
+                    # Implement your desired comparison logic here:
+                    # Option A: Simple exact match (case-insensitive)
+                    # reward = 1.0 if str(response).strip().lower() == str(ans).strip().lower() else 0.0
+                    # Option B: Check if answer is substring (case-insensitive)
+                    reward = 1.0 if str(ans).strip().lower() in str(response).strip().lower() else 0.0
+                    # Add more sophisticated logic if needed
+            else:
+                reward = None # Important: Return None if the task doesn't match
+            rewards.append(reward)
+        return rewards
+        
     def correct_answer_reward_func(self, completions, answer, task, **kwargs) -> List[float | None]:
         """Reward function that checks if the final answer matches the expected answer."""
         rewards = []
@@ -158,11 +182,47 @@ class ToolRubric(Rubric):
                     reward = self.code_reward_func([completion], [ans], [t], **kwargs)[0]
                 except:
                     reward = None
+            elif t == "qa":
+                try:
+                    reward = self.qa_reward_func([completion], [ans], [t], **kwargs)[0]
+                except:
+                    reward = None
             else:
                 reward = None
             rewards.append(reward)
         return rewards
-    
+
+    def no_tool_bonus_reward_func(self, completions: List[List[Dict[str, str]]], answer: List[str], task: List[str], **kwargs) -> List[float]:
+        """
+        Reward function that gives a bonus if the correct answer is achieved without successful tool use.
+        """
+        rewards = []
+        correctness_scores = self.correct_answer_reward_func(completions, answer, task, **kwargs)
+
+        for i, trajectory in enumerate(completions):
+            correctness = correctness_scores[i]
+            tool_successfully_used = False
+
+            # Check for successful tool execution in the trajectory
+            for j, msg in enumerate(trajectory):
+                if msg['role'] == 'assistant':
+                    parsed = self.parser.parse(msg['content'])
+                    if hasattr(parsed, 'tool') and parsed.tool is not None:
+                        # Found a tool call, check if it was successful
+                        if j + 1 < len(trajectory) and trajectory[j + 1]['role'] == 'user':
+                            parsed_response = self.env_parser.parse(trajectory[j + 1]['content'])
+                            if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
+                                tool_successfully_used = True
+                                break # Found one successful use, no need to check further
+
+            # Award bonus only if correct AND no tool was successfully used
+            if correctness == 1.0 and not tool_successfully_used:
+                rewards.append(1.0) # The weight (e.g., 0.1) will scale this during training
+            else:
+                rewards.append(0.0)
+
+        return rewards
+
     def tool_execution_reward_func(self, completions: List[List[Dict[str, str]]], **kwargs) -> List[float]:
         """
         Reward function that checks tool execution success.
