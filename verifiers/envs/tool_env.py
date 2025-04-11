@@ -181,16 +181,62 @@ class ToolEnv(MultiTurnEnv):
         except Exception as e:
             return f"Error: {str(e)}. " + "Please format your tool call as '{\"name\": \"tool_name\", \"args\": {\"arg1\": \"value1\", \"arg2\": \"value2\"}}'"
 
+    # def env_response(self, messages: List[Dict[str, str]], **kwargs: Any) -> Dict[str, str]:
+    #     try:
+    #         parsed = self.llm_parser.parse(messages[-1]["content"])
+    #         # Check if we got a valid tool field (not just None from failed parsing)
+    #         if hasattr(parsed, 'tool') and parsed.tool is not None:
+    #             result = self.call_tool(parsed.tool)
+    #             if len(result.strip()) > 0:
+    #                 return {"role": "user", "content": self.env_parser.format(result=result)}
+    #             else:
+    #                 return {"role": "user", "content": "Error: Tool execution returned empty output."}
+    #     except Exception:
+    #         pass
+    #     return {"role": "user", "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting."}
+
     def env_response(self, messages: List[Dict[str, str]], **kwargs: Any) -> Dict[str, str]:
+        last_content = messages[-1]["content"]
         try:
-            parsed = self.llm_parser.parse(messages[-1]["content"])
-            # Check if we got a valid tool field (not just None from failed parsing)
+            # Attempt to parse the last assistant message using the configured parser
+            parsed = self.llm_parser.parse(last_content)
+
+            # Scenario 1: A valid <tool> tag was found
             if hasattr(parsed, 'tool') and parsed.tool is not None:
                 result = self.call_tool(parsed.tool)
                 if len(result.strip()) > 0:
+                    # Tool executed successfully, return result
                     return {"role": "user", "content": self.env_parser.format(result=result)}
                 else:
+                    # Tool executed but returned empty output
                     return {"role": "user", "content": "Error: Tool execution returned empty output."}
-        except Exception:
-            pass
-        return {"role": "user", "content": "Error: Tool command not found or invalid XML format. Please ensure correct formatting."}
+
+            # Scenario 2: Parsing succeeded, but no <tool> tag was found.
+            # This block is reached if is_completed() returned False.
+            else:
+                # Check if an <answer> tag was provided despite is_completed() being False.
+                if hasattr(parsed, 'answer') and parsed.answer is not None:
+                     # This case signifies a conflict: LLM provided an answer, but environment rules disagree.
+                     # Refined error message:
+                     return {"role": "user", "content": "Error: Found <answer> tag, but the task is not considered complete by the environment rules. Expected a <tool> call if more steps are needed, or ensure the completion criteria are fully met before using <answer>."}
+                else:
+                     # No tool call and no answer tag found after successful parsing.
+                     # Guide the LLM towards expected actions based on parser config.
+                     # Dynamically find the tag names for the choice between tool/answer
+                     # Assumes a structure like [..., ('tool', 'answer')] or similar
+                     tool_tag_name = 'tool' # Default assumption
+                     answer_tag_name = 'answer' # Default assumption
+                     for canonical, alternatives in self.llm_parser._fields:
+                         if 'tool' in alternatives: # Find the canonical name used for tool
+                             tool_tag_name = canonical
+                         if 'answer' in alternatives: # Find the canonical name used for answer
+                             answer_tag_name = canonical
+                             
+                     return {"role": "user", "content": f"Error: Expected a <tool> call or final <answer> tag, but found neither after parsing. Please use <tool> or put your final answer between <answer> tags correctly."}
+
+        except Exception as e:
+            # Scenario 3: XML Parsing failed entirely.
+            # Log the error for debugging if needed: self.logger.warning(f"XML Parsing failed for content: '{last_content}'. Error: {e}")
+            field_names = self.llm_parser.get_fields()
+            tag_list = ", ".join([f"<{name}>...</{name}>" for name in field_names]) # Example: <think>...</think>, <tool>...</tool>, <answer>...</answer>
+            return {"role": "user", "content": f"Error: Invalid XML format. Failed to parse the response. Please ensure correct XML structure using tags like <think>...</think>, <tool>...</tool>, <answer>...</answer>."}
