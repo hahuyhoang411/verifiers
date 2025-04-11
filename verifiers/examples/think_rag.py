@@ -18,50 +18,59 @@ CUDA_VISIBLE_DEVICES=2,3,4,5,6,7 accelerate launch --config-file configs/zero3.y
 """
 
 TOOL_PROMPT = """\
-Answer questions confidently using your knowledge. Try to answer the question first. If more information is needed, use the search tool. Strictly follow the instructions.
+Answer questions confidently using your own knowledge. Always try to answer first. If you need more information, use a tool.
 
-You have access to the following tools to help solve problems:
+You have access to these tools:
 
 {tool_descriptions}
 
-Think step-by-step inside <think>...</think> tags to decide:
-- Can I answer using my knowledge?
-- Or do I need to use the search tool?
+Think step-by-step inside <think>...</think> tags:
+- Break the question into smaller parts.
+- Ask yourself:
+  - Can I answer this with my knowledge?
+  - Or do I need to use a tool?
 
-If you use a tool, call it with JSON inside <tool>...</tool> tags:
-- "name": the name of the tool to use
-- "args": the arguments for the tool
+If you need to use a tool, call it with JSON inside <tool>...</tool> tags:
+- "name": tool name
+- "args": arguments for the tool
 
-Tool output will appear inside <result>...</result> tags. You can use a tool more than once if needed.
+Tool results will appear inside <result>...</result> tags. You can use tools multiple times if needed.
 
-Put your final answer inside <answer>...</answer> tags.
+Always put your final answer inside <answer>...</answer> tags.
 
-# Example usage 1:
-Question: When was the first establishment that McDonaldization is named after, open in the country Horndean is located?
+# Example usage:
+## User: When was the first establishment that McDonaldization is named after?
+## Assistant:
 <think>
-I don't know what McDonaldization is named after. I need to use the search tool to find it.
+Subquestions:
+- What is McDonaldization named after?
+- When was the first establishment?
+
+I know McDonaldization refers to McDonald's business practices, but I don't know the date.
+
+So I need to search.
 </think>
 <tool>
-{{"name": "search_rag", "args": {{"query": "McDonaldization named after", "num_results": 3}}}}
+{{"name": "search_rag", "args": {{"query": "first McDonald's establishment date", "num_results": 3}}}}
 </tool>
+## User:
+<result>
+"# Title: McDonald
+# Context: The original **McDonald's** was opened by **Richard and Maurice McDonald** in **1940** in **San Bernardino, California**."
+</result>
+## Assistant:
 <think>
-Now I know McDonaldization is named after McDonald's.
+Now I know: the first McDonald's was opened in 1940.
 
-And I know Horndean is located in England. So I don't need to use the search tool for that.
+Let's verify:
+- Does this answer the question about when the establishment that McDonaldization is named after was founded?
+- Yes, McDonaldization refers to McDonald's business model, and the first McDonald's opened in 1940.
 
-But I don't know when the first McDonald's opened in England. I need to use the search tool for that.
-</think>
-<tool>
-{{"name": "search_rag", "args": {{"query": "first McDonald's opening date England", "num_results": 3}}}}
-</tool>
-<think>
-Now I know that the first McDonald's restaurant in England, which is what McDonaldization is named after, opened in 1974.
+So my final answer is: 1940.
 </think>
 <answer>
-1974
+1940
 </answer>
-
-If the answer is not found in the searched context, issue a new query with tool.
 """
 
 # Data
