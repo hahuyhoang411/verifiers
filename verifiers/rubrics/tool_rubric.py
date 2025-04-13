@@ -30,7 +30,7 @@ class ToolRubric(Rubric):
             0.0,  # code
             0.0,  # qa
             1.0,  # correct_answer
-            0.5,  # no_tool_bonus
+            1.0,  # no_tool_bonus
             0.5,  # tool_execution
             0.25, # format
             0.25, # xml
