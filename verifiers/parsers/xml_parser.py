@@ -8,7 +8,7 @@ class XMLParser:
         Initialize the parser with field definitions.
         
         Each field may be:
-          - a string (e.g. "reasoning"): the XML tag is fixed.
+          - a string (e.g. "think"): the XML tag is fixed.
           - a tuple of alternatives (e.g. ("code", "answer")): the first element is
             the canonical name used for formatting, and all elements are allowed tags
             when parsing.
@@ -208,8 +208,8 @@ class XMLParser:
         allowed names (preferring the canonical if present).
         
         Example usage:
-            parser = XMLParser(['reasoning', ('code', 'answer')])
-            formatted_str = parser.format(reasoning="...", code="...")
+            parser = XMLParser(['think', ('code', 'answer')])
+            formatted_str = parser.format(think="...", code="...")
         """
         parts = []
         for canonical, alternatives in self._fields:
@@ -235,11 +235,11 @@ class XMLParser:
         to all allowed tags in the schema.
         
         For each field defined:
-          - If it is a simple field (e.g. 'reasoning'), the output object will have
-            an attribute 'reasoning' set to the text content (or None if missing).
+          - If it is a simple field (e.g. 'think'), the output object will have
+            an attribute 'think' set to the text content (or None if missing).
           - If it is defined with alternatives (e.g. ("code", "answer")), the output
             object will have attributes for *each* allowed tag name. For example,
-            if the schema is ['reasoning', ('code', 'answer')], then both
+            if the schema is ['think', ('code', 'answer')], then both
             `result.code` and `result.answer` are always accessible. If a tag is not
             found in the XML, its corresponding attribute is set to None.
         """

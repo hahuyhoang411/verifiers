@@ -5,7 +5,7 @@ from verifiers.rubrics import Rubric
 
 class CodeRubric(Rubric):
     def __init__(self,
-                 parser: XMLParser = XMLParser(fields=["reasoning", ("code", "answer")]),
+                 parser: XMLParser = XMLParser(fields=["think", ("code", "answer")]),
                  env_parser: XMLParser = XMLParser(fields=["output"])):
         self.parser = parser
         self.env_parser = env_parser

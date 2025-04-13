@@ -5,7 +5,7 @@ from verifiers.tools import python
 from verifiers.utils import preprocess_dataset
 
 """
-Evaluating multi-turn reasoning before/after training.
+Evaluating multi-turn think before/after training.
 
 CUDA_VISIBLE_DEVICES=0,1 vllm serve 'Qwen/Qwen2.5-7B-Instruct' --tensor_parallel_size 2 --max_model_len 8192 --dtype bfloat16 \
     --gpu_memory_utilization 0.9 --enable_prefix_caching \
@@ -15,7 +15,7 @@ uv run verifiers/examples/math_eval.py
 """
 
 TOOL_PROMPT = """
-Think step-by-step inside <reasoning>...</reasoning> tags, then either call a tool inside <tool>...</tool> tags, or give your final answer inside <answer>...</answer> tags.
+Think step-by-step inside <think>...</think> tags, then either call a tool inside <tool>...</tool> tags, or give your final answer inside <answer>...</answer> tags.
 
 You have access to the following tools to help solve problems:
 

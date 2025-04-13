@@ -113,7 +113,7 @@ class ToolEnv(MultiTurnEnv):
         self.dataset_name = dataset
         self.max_steps = max_steps
         self.rubric = ToolRubric(tools=tools)
-        self.llm_parser = XMLParser(fields=["reasoning", ("tool", "answer")])
+        self.llm_parser = XMLParser(fields=["think", ("tool", "answer")])
         self.env_parser = XMLParser(fields=["result"])
 
     def get_reward_funcs(self, **kwargs: Any) -> List[RewardFunc]:

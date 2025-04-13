@@ -4,7 +4,7 @@ from verifiers.rubrics import Rubric
 
 class MathRubric(Rubric):
     def __init__(self):
-        self.parser = XMLParser(fields=["reasoning", "answer"])
+        self.parser = XMLParser(fields=["think", "answer"])
         self.reward_funcs = [
             self.exact_answer_reward_func,
             self.int_answer_reward_func,

@@ -31,7 +31,7 @@ class CodeEnv(MultiTurnEnv):
             sampling_args=sampling_args,
             **kwargs
         )
-        self.llm_parser = XMLParser(fields=["reasoning", ("code", "answer")])
+        self.llm_parser = XMLParser(fields=["think", ("code", "answer")])
         self.env_parser = XMLParser(fields=["output"])
         self.rubric = CodeRubric(parser=self.llm_parser, env_parser=self.env_parser)
     
