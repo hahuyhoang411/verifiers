@@ -200,7 +200,7 @@ def preprocess_dataset(name: str = "gsm8k",
         actual_split = 'train'
         logger.info(f"Loading dataset 'HoangHa/Tool-RL' with config='{config_name}' and split='{actual_split}'")
         try:
-            dataset = load_dataset("HoangHa/Tool-RL", config_name, split=actual_split) # type: ignore
+            dataset = load_dataset("HoangHa/Tool-RL", config_name, split=actual_split).shuffle(seed=seed) # type: ignore
         except Exception as e:
              raise ValueError(f"Failed to load HoangHa/Tool-RL with config='{config_name}', split='{actual_split}'. Error: {e}")
     elif name == "aime2024":
