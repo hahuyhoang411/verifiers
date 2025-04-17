@@ -8,7 +8,7 @@ import torch
 
 class ToolRubric(Rubric):
     def __init__(self,
-                 parser: XMLParser = XMLParser(fields=["reasoning", ("tool", "answer")]),
+                 parser: XMLParser = XMLParser(fields=["think", ("tool", "answer")]),
                  env_parser: XMLParser = XMLParser(fields=["result"]),
                  tools: List[Callable] = []):
         self.parser = parser
