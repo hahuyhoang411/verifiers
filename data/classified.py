@@ -1,7 +1,7 @@
 from datasets import load_dataset, concatenate_datasets, Dataset
 import numpy as np
 
-dataset = load_dataset("json", data_files="/home/jovyan/visual-thinker-workspace/synthetic_data/verifiers/tool_categorized.jsonl", split='train')
+dataset = load_dataset("json", data_files="tool_categorized.jsonl", split='train')
 dataset = dataset.map(lambda x: {"new_answers": x['generations'] if x.get('generations') and x['generations'] else ''})
 dataset = dataset.remove_columns(['generations', 'finish_reasons', 'api_metadata'])
 print(dataset)
