@@ -178,10 +178,16 @@ def get_preprocess_fn(name: str) -> Callable[[Dict], Dict]:
             # Direct mapping as column names seem suitable
             # Ensure 'task' column exists, otherwise default or raise error
             task = x.get("task", "qa") # Default if task column is missing
+            research_flag = x.get("research", None) # Handle if missing
+            if research_flag is None:
+                # Add a default or raise error if 'research' is mandatory
+                logger.warning(f"Missing 'research' flag for question: {x['question']}")
+                research_flag = False # Example default
             return {
                 "question": x["question"],
                 "answer": x["answer"],
-                "task": task
+                "task": task,
+                "research": research_flag
             }
         return preprocess_tool_rl
         

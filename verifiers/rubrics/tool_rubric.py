@@ -4,37 +4,54 @@ from typing import List, Dict, Callable
 from verifiers.parsers import XMLParser
 from verifiers.rubrics import Rubric
 from verifiers.rubrics.math_grader import grade
+import torch
 
 class ToolRubric(Rubric):
     def __init__(self,
-                 parser: XMLParser = XMLParser(fields=["think", ("tool", "answer")]),
+                 parser: XMLParser = XMLParser(fields=["reasoning", ("tool", "answer")]),
                  env_parser: XMLParser = XMLParser(fields=["result"]),
                  tools: List[Callable] = []):
         self.parser = parser
         self.env_parser = env_parser
         self.tools = {tool.__name__: tool for tool in tools}
         self.reward_funcs = [
+            # Correctness (Keep these first, maybe used by metric logging)
             self.mc_reward_func,
             self.math_reward_func,
             self.code_reward_func,
             self.qa_reward_func,
-            self.correct_answer_reward_func,
-            self.no_tool_bonus_reward_func, # Answer correctly if no tools 
-            self.tool_execution_reward_func,
+            self.correct_answer_reward_func, # Main correctness signal
+
+            # Behavior shaping rewards/penalties
+            self.no_tool_bonus_reward_func,     # Refined bonus
+            self.false_positive_penalty,        # New penalty
+            self.false_negative_penalty,        # New penalty
+            self.tool_use_cost,                 # New cost
+
+            # Existing structural/auxiliary rewards
+            self.tool_execution_reward_func,    # Maybe lower weight later
             self.parser.get_format_reward_func(),
             self.parser.get_xml_reward_func(),
         ]
+
+        # --- Define DEFAULT reward weights ---
         self.reward_weights = [
-            0.0,  # mc
+            0.0,  # mc (keep for potential direct use if needed)
             0.0,  # math
             0.0,  # code
             0.0,  # qa
-            1.0,  # correct_answer
-            1.0,  # no_tool_bonus
-            0.5,  # tool_execution
-            0.25, # format
-            0.25, # xml
+            1.0,  # correct_answer (Primary objective)
+
+            0.5,  # no_tool_bonus (Give decent bonus for efficiency)
+            -0.7, # false_positive_penalty (Penalize unnecessary use)
+            -0.7, # false_negative_penalty (Penalize not using when needed & wrong)
+            0.0, # tool_use_cost (Small cost per use)
+
+            0.5,  # tool_execution (Lowered weight)
+            0.1,  # format (Lowered weight)
+            0.1,  # xml (Lowered weight)
         ]
+        
         for tool_name in self.tools.keys():
             self.reward_funcs.append(self.get_named_tool_reward_func(tool_name))
             self.reward_weights.append(0.0)
@@ -42,6 +59,17 @@ class ToolRubric(Rubric):
             self.reward_weights.append(0.0)
             self.reward_funcs.append(self.get_named_tool_attempt_reward_func(tool_name))
             self.reward_weights.append(0.0)
+
+    def _was_tool_successfully_used(self, trajectory: List[Dict[str, str]]) -> bool:
+        for j, msg in enumerate(trajectory):
+            if msg['role'] == 'assistant':
+                parsed = self.parser.parse(msg['content'])
+                if hasattr(parsed, 'tool') and parsed.tool is not None:
+                    if j + 1 < len(trajectory) and trajectory[j + 1]['role'] == 'user':
+                        parsed_response = self.env_parser.parse(trajectory[j + 1]['content'])
+                        if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
+                            return True
+        return False
 
     def evaluate_code(self, code_str, answer, **kwargs) -> float:
         import io
@@ -192,37 +220,77 @@ class ToolRubric(Rubric):
             rewards.append(reward)
         return rewards
 
-    def no_tool_bonus_reward_func(self, completions: List[List[Dict[str, str]]], answer: List[str], task: List[str], **kwargs) -> List[float]:
+    def no_tool_bonus_reward_func(self, completions: List[List[Dict[str, str]]], answer: List[str], task: List[str], research: List[bool | None], **kwargs) -> List[float]:
         """
-        Reward function that gives a bonus if the correct answer is achieved without successful tool use.
+        Gives bonus if correct answer achieved without tool use AND tool was not needed.
         """
         rewards = []
-        correctness_scores = self.correct_answer_reward_func(completions, answer, task, **kwargs)
+        # Ensure we have correctness scores first
+        correctness_scores = self.correct_answer_reward_func(completions, answer, task, research=research, **kwargs)
 
         for i, trajectory in enumerate(completions):
+            # Handle cases where correctness or research flag might be None/NaN
             correctness = correctness_scores[i]
-            tool_successfully_used = False
+            is_correct = correctness is not None and not torch.isnan(torch.tensor(correctness)) and correctness > 0.5
+            research_needed = research[i]
 
-            # Check for successful tool execution in the trajectory
-            for j, msg in enumerate(trajectory):
-                if msg['role'] == 'assistant':
-                    parsed = self.parser.parse(msg['content'])
-                    if hasattr(parsed, 'tool') and parsed.tool is not None:
-                        # Found a tool call, check if it was successful
-                        if j + 1 < len(trajectory) and trajectory[j + 1]['role'] == 'user':
-                            parsed_response = self.env_parser.parse(trajectory[j + 1]['content'])
-                            if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
-                                tool_successfully_used = True
-                                break # Found one successful use, no need to check further
+            # Check if tool was successfully used
+            tool_used = self._was_tool_successfully_used(trajectory)
 
-            # Award bonus only if correct AND no tool was successfully used
-            if correctness == 1.0 and not tool_successfully_used:
-                rewards.append(1.0) # The weight (e.g., 0.1) will scale this during training
+            # Award bonus only if: Correct AND Tool Not Used AND Tool Not Needed
+            if is_correct and not tool_used and research_needed is False:
+                rewards.append(1.0) # Bonus awarded (weight scales this)
             else:
-                rewards.append(0.0)
+                rewards.append(0.0) # No bonus
 
         return rewards
 
+    def false_positive_penalty(self, completions: List[List[Dict[str, str]]], research: List[bool | None], **kwargs) -> List[float]:
+        """Penalize using the tool when research=False."""
+        rewards = []
+        for i, trajectory in enumerate(completions):
+            research_needed = research[i]
+            if research_needed is False: # Tool was not needed
+                tool_used = self._was_tool_successfully_used(trajectory)
+                if tool_used:
+                    rewards.append(1.0) # Apply penalty (will be scaled by negative weight)
+                else:
+                    rewards.append(0.0) # No penalty
+            else:
+                rewards.append(0.0) # Tool was needed or flag missing, no FP penalty
+        return rewards
+
+    def false_negative_penalty(self, completions: List[List[Dict[str, str]]], answer: List[str], task: List[str], research: List[bool | None], **kwargs) -> List[float]:
+        """Penalize NOT using the tool when research=True AND getting the answer WRONG."""
+        rewards = []
+        correctness_scores = self.correct_answer_reward_func(completions, answer, task, research=research, **kwargs)
+
+        for i, trajectory in enumerate(completions):
+            research_needed = research[i]
+            correctness = correctness_scores[i]
+            is_correct = correctness is not None and not torch.isnan(torch.tensor(correctness)) and correctness > 0.5
+
+            if research_needed is True: # Tool was needed
+                tool_used = self._was_tool_successfully_used(trajectory)
+                if not tool_used and not is_correct:
+                     rewards.append(1.0) # Apply penalty (scaled by negative weight)
+                else:
+                     rewards.append(0.0) # No penalty if tool used or answer correct
+            else:
+                 rewards.append(0.0) # Tool not needed, no FN penalty
+        return rewards
+
+    def tool_use_cost(self, completions: List[List[Dict[str, str]]], **kwargs) -> List[float]:
+        """Apply a small cost for each successful tool use."""
+        rewards = []
+        for trajectory in completions:
+            if self._was_tool_successfully_used(trajectory):
+                rewards.append(1.0) # Apply cost (scaled by negative weight)
+            else:
+                rewards.append(0.0) # No cost if tool not used successfully
+        return rewards
+
+    
     def tool_execution_reward_func(self, completions: List[List[Dict[str, str]]], **kwargs) -> List[float]:
         """
         Reward function that checks tool execution success.
