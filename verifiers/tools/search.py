@@ -5,41 +5,55 @@ from duckduckgo_search import DDGS
 from brave import Brave
 from typing import Optional, List, Dict, Any
 
-from langchain_community.document_loaders import HuggingFaceDatasetLoader
-from langchain_community.retrievers import BM25Retriever
-from langchain_core.documents import Document
-LANGCHAIN_AVAILABLE = True
+try:
+    from langchain_community.document_loaders import HuggingFaceDatasetLoader
+    from langchain_community.retrievers import BM25Retriever
+    from langchain_core.documents import Document
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    # Define dummy classes if langchain is not available to avoid NameErrors later
+    class Document: pass
+    class BM25Retriever: pass
+    class HuggingFaceDatasetLoader: pass
+
 
 # Initialize global variables for RAG components (lazy loading)
 _rag_retriever: Optional[BM25Retriever] = None
 _rag_data: Optional[List[Document]] = None
-_rag_initialized: bool = False
+_rag_initialized: bool = False  # Tracks if initialization has been ATTEMPTED
+_rag_ready: bool = False       # Tracks if initialization was SUCCESSFUL
 _rag_init_error: Optional[str] = None
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # Use module-level logger
 
 def _initialize_rag():
     """Initializes the RAG retriever components."""
-    global _rag_retriever, _rag_data, _rag_initialized, _rag_init_error
-
+    global _rag_retriever, _rag_data, _rag_initialized, _rag_ready, _rag_init_error
+    # Prevent re-initialization if already attempted
     if _rag_initialized:
+        logger.debug("RAG initialization already attempted.")
         return
 
     _rag_initialized = True # Mark as attempted initialization
+    logger.info("Attempting RAG initialization...") # Log attempt start
 
     if not LANGCHAIN_AVAILABLE:
-        _rag_init_error = "LangChain components not installed. Please run 'uv sync' after updating pyproject.toml."
+        _rag_init_error = "LangChain components not installed. search_rag requires 'langchain-community'. Please install it."
         logger.error(_rag_init_error)
+        _rag_ready = False # Mark as not ready
         return
 
     try:
-        logger.info("Initializing RAG retriever for search_rag...")
+        logger.info("Loading RAG dataset 'HoangHa/Tool-RL'...")
+        # Corrected loader usage: specify config name and split separately
         loader = HuggingFaceDatasetLoader(
             path="HoangHa/Tool-RL",
-            name="corpus",
+            name="corpus", # Specify the configuration name
             page_content_column="context", # Use context for content
         )
-        _rag_data = loader.load()
+        # Load the 'train' split from the 'corpus' configuration
+        _rag_data = loader.load() # Loads the default split ('train')
         logger.info(f"Loaded {len(_rag_data)} documents for RAG.")
 
         # Map context to page_content and add title/id to metadata
@@ -49,17 +63,21 @@ def _initialize_rag():
              doc.metadata['id'] = doc.metadata.get('id', 'N/A')
              # page_content is already set by the loader
 
+        logger.info("Initializing BM25Retriever...")
         _rag_retriever = BM25Retriever.from_documents(
             _rag_data,
             k=3 # Default k value
         )
-        logger.info("BM25Retriever initialized successfully.")
+        _rag_ready = True # Mark initialization as successful
+        _rag_init_error = None # Clear any previous error
+        logger.info("BM25Retriever initialized successfully. RAG system is ready.")
 
     except Exception as e:
         _rag_init_error = f"Error during RAG initialization: {str(e)}"
-        logger.error(_rag_init_error, exc_info=True)
+        logger.error(_rag_init_error, exc_info=True) # Log full traceback
         _rag_retriever = None
         _rag_data = None
+        _rag_ready = False # Mark as not ready
 
 def search_rag(query: str, num_results: int = 3) -> str:
     """Retrieves relevant documents from a pre-loaded corpus using BM25.
@@ -74,15 +92,19 @@ def search_rag(query: str, num_results: int = 3) -> str:
     Examples:
         {"name": "search_rag", "args": {"query": "effects of climate change on polar bears", "num_results": 2}}
     """
-    # Ensure RAG components are initialized
+    # Ensure RAG components are initialized (might be called again, but _initialize_rag handles that)
     if not _rag_initialized:
-        _initialize_rag()
+         logger.warning("search_rag called before explicit initialization. Attempting lazy init.")
+         _initialize_rag()
 
-    # Check for initialization errors
-    if _rag_init_error:
-        return f"Error: RAG system not initialized. {_rag_init_error}"
-    if _rag_retriever is None:
-        return "Error: RAG retriever is not available."
+    # Check if initialization failed previously or if it's not ready
+    if not _rag_ready:
+        error_msg = f"Error: RAG system not ready."
+        if _rag_init_error:
+            error_msg += f" Reason: {_rag_init_error}"
+        return error_msg
+    if _rag_retriever is None: # Should be covered by _rag_ready, but belts and suspenders
+        return "Error: RAG retriever is not available despite being marked ready."
 
     try:
         # Set the number of results for this specific query
@@ -93,29 +115,26 @@ def search_rag(query: str, num_results: int = 3) -> str:
         if not results:
             return "No relevant documents found in the corpus."
 
-        summaries = []
-        for doc in results:
-            title = doc.metadata.get('title', 'N/A')
-            url = doc.metadata.get('id', 'N/A')
-            content = doc.page_content
+        # --- Format Results ---
+        # Use only the context (page_content) as per the example `think_rag.py`
+        # where the <result> only contains the text context.
+        contexts = [doc.page_content for doc in results]
+        return "\n\n".join(contexts)
+        # --- End Format Results ---
 
-            #  # Truncate content reasonably
-            # if len(content) > 300:
-            #     period_index = content[:300].rfind('.')
-            #     if period_index != -1:
-            #         snippet = content[:period_index + 1]
-            #     else:
-            #         snippet = content[:300] + "..."
-            # else:
-            #     snippet = content
-
-            summaries.append(content)
-
-        return "\n\n".join(summaries)
+        # --- Alternative Formatting (if you wanted title/id) ---
+        # summaries = []
+        # for doc in results:
+        #     title = doc.metadata.get('title', 'N/A')
+        #     # url = doc.metadata.get('id', 'N/A') # Using ID as URL placeholder
+        #     content = doc.page_content
+        #     summaries.append(f"Title: {title}\nContext: {content}")
+        # return "\n\n".join(summaries)
+        # --- End Alternative Formatting ---
 
     except Exception as e:
-        logger.error(f"Error during RAG retrieval: {str(e)}", exc_info=True)
-        return f"Error: {str(e)}"
+        logger.error(f"Error during RAG retrieval for query '{query}': {str(e)}", exc_info=True)
+        return f"Error retrieving documents: {str(e)}"
 
 def search_ddg(query: str, num_results: int = 5) -> str:
     """Searches DuckDuckGo and returns concise summaries of top results. Handles rate limiting with retries.

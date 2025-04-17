@@ -1,6 +1,8 @@
 import inspect
 import json
 from typing import List, Dict, Any, Callable
+import logging # Import logging
+import os      # Import os for getpid
 
 from datasets import Dataset
 
@@ -9,6 +11,13 @@ from verifiers.envs.multiturn_env import MultiTurnEnv
 from verifiers.parsers import XMLParser
 from verifiers.prompts import DEFAULT_TOOL_PROMPT_TEMPLATE
 from verifiers.rubrics import ToolRubric
+
+# Import the specific tool and its initializer
+from verifiers.tools.search import search_rag, _initialize_rag
+# Import the global error variable to check status after init
+from verifiers.tools.search import _rag_init_error, _rag_ready
+
+logger = logging.getLogger(__name__) # Setup logger for this module
 
 def infer_schema_from_function(func: Callable) -> Dict[str, Any]:
     """Infers a tool schema from a function's signature and docstring."""
@@ -96,6 +105,30 @@ class ToolEnv(MultiTurnEnv):
         # Infer schemas from tool functions
         self.tool_schemas = [infer_schema_from_function(tool) for tool in tools]
         self.tools = {tool.__name__: tool for tool in tools}
+
+        # --- RAG Initialization Trigger ---
+        # Check if search_rag is one of the provided tools and initialize it if needed.
+        # Note: In a multi-process setup (like accelerate), this might run
+        # initialization on each process, which could be memory-intensive.
+        # Consider optimizing if memory becomes an issue (e.g., shared memory, service).
+        if search_rag in tools:
+            # Check if already initialized (e.g., by another instance)
+            from verifiers.tools.search import _rag_initialized # Re-import to get current state
+            if not _rag_initialized:
+                 logger.info(f"[Process {os.getpid()}] ToolEnv detected 'search_rag' tool. Triggering RAG initialization...")
+                 _initialize_rag() # Call the initialization function
+
+                 # Check status after initialization attempt
+                 if not _rag_ready:
+                      logger.warning(f"[Process {os.getpid()}] RAG initialization failed or did not complete successfully: {_rag_init_error}. 'search_rag' tool may return errors.")
+                      # Optionally, you could raise an error here to stop setup if RAG is critical:
+                      # raise RuntimeError(f"RAG initialization failed: {_rag_init_error}")
+                 else:
+                      logger.info(f"[Process {os.getpid()}] RAG system appears ready.")
+            else:
+                 logger.info(f"[Process {os.getpid()}] ToolEnv detected 'search_rag' tool, but RAG initialization was already attempted.")
+                 if not _rag_ready:
+                     logger.warning(f"[Process {os.getpid()}] Previous RAG initialization failed: {_rag_init_error}. 'search_rag' tool may return errors.")
         
         # Format the system prompt with tool descriptions
         tool_descriptions = format_tool_descriptions(self.tool_schemas)
@@ -113,7 +146,7 @@ class ToolEnv(MultiTurnEnv):
         self.dataset_name = dataset
         self.max_steps = max_steps
         self.rubric = ToolRubric(tools=tools)
-        self.llm_parser = XMLParser(fields=["think", ("tool", "answer")])
+        self.llm_parser = XMLParser(fields=["reasoning", ("tool", "answer")])
         self.env_parser = XMLParser(fields=["result"])
 
     def get_reward_funcs(self, **kwargs: Any) -> List[RewardFunc]:
