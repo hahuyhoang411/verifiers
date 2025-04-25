@@ -147,7 +147,7 @@ class ToolEnv(MultiTurnEnv):
         self.max_steps = max_steps
         self.rubric = ToolRubric(tools=tools)
         self.llm_parser = XMLParser(fields=["think", ("tool", "answer")])
-        self.env_parser = XMLParser(fields=["result"])
+        self.env_parser = XMLParser(fields=["tool_response"]) # Changed "result" to "tool_response"
 
     def get_reward_funcs(self, **kwargs: Any) -> List[RewardFunc]:
         return self.rubric.get_reward_funcs()
@@ -239,7 +239,7 @@ class ToolEnv(MultiTurnEnv):
                 result = self.call_tool(parsed.tool)
                 if len(result.strip()) > 0:
                     # Tool executed successfully, return result
-                    return {"role": "user", "content": self.env_parser.format(result=result)}
+                    return {"role": "user", "content": self.env_parser.format(tool_response=result)} # Changed "result" to "tool_response"
                 else:
                     # Tool executed but returned empty output
                     return {"role": "user", "content": "Error: Tool execution returned empty output."}
