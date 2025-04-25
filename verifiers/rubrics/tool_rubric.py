@@ -42,14 +42,14 @@ class ToolRubric(Rubric):
             0.0,  # qa
             1.0,  # correct_answer (Primary objective)
 
-            0.5,  # no_tool_bonus (Give decent bonus for efficiency)
-            -0.7, # false_positive_penalty (Penalize unnecessary use)
-            -0.7, # false_negative_penalty (Penalize not using when needed & wrong)
-            0.0, # tool_use_cost (Small cost per use)
+            0.7,  # no_tool_bonus (Give decent bonus for efficiency)
+            -0.9, # false_positive_penalty (Penalize unnecessary use)
+            -0.9, # false_negative_penalty (Penalize not using when needed & wrong)
+            -0.1, # tool_use_cost (Small cost per use)
 
-            0.5,  # tool_execution (Lowered weight)
-            0.1,  # format (Lowered weight)
-            0.1,  # xml (Lowered weight)
+            0.25,  # tool_execution (Lowered weight)
+            0.25,  # format (Lowered weight)
+            0.25,  # xml (Lowered weight)
         ]
         
         for tool_name in self.tools.keys():
