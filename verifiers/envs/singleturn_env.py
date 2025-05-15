@@ -7,7 +7,7 @@ from verifiers.envs.multiturn_env import MultiTurnEnv
 from verifiers.prompts import SIMPLE_PROMPT, DOUBLECHECK_FEW_SHOT
 from verifiers.rubrics import MathRubric
 
-class DoubleCheckEnv(MultiTurnEnv):
+class SingleTurnEnv(MultiTurnEnv):
     def __init__(self, 
                  dataset: Dataset | None = None,
                  system_prompt: str = SIMPLE_PROMPT,
@@ -23,7 +23,7 @@ class DoubleCheckEnv(MultiTurnEnv):
         return self.rubric.get_reward_weights()
 
     def is_completed(self, messages: List[Dict[str, str]], **kwargs: Any) -> bool:
-        return len(messages) > 1 and messages[-2]['content'] == 'Are you sure?'
+        return True
     
     def env_response(self, messages: List[Dict[str, str]], **kwargs: Any) -> Dict[str, str]:
-        return {'role': 'user', 'content': 'Are you sure?'}
+        return {'role': 'user', 'content': 'ERROR'}

@@ -95,6 +95,8 @@ class ToolEnv(MultiTurnEnv):
                  tools: List[Callable] = [],
                  system_prompt: str = DEFAULT_TOOL_PROMPT_TEMPLATE,
                  few_shot: List[Dict[str, str]] = [],
+                 llm_fields: List[str | tuple[str, str]] = ["reasoning", ("tool", "answer")],
+                 env_fields: List[str | tuple[str, str]] = ["result"],
                  sampling_args={
                      "stop": ["</tool>\n", "</answer>\n"],
                      #"stop": [],
@@ -145,9 +147,9 @@ class ToolEnv(MultiTurnEnv):
         )
         self.dataset_name = dataset
         self.max_steps = max_steps
-        self.rubric = ToolRubric(tools=tools)
-        self.llm_parser = XMLParser(fields=["think", ("tool", "answer")])
-        self.env_parser = XMLParser(fields=["tool_response"]) # Changed "result" to "tool_response"
+        self.llm_parser = XMLParser(fields=llm_fields)
+        self.env_parser = XMLParser(fields=env_fields)
+        self.rubric = ToolRubric(tools=tools, parser=self.llm_parser, env_parser=self.env_parser)
 
     def get_reward_funcs(self, **kwargs: Any) -> List[RewardFunc]:
         return self.rubric.get_reward_funcs()
