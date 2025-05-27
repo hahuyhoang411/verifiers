@@ -241,7 +241,7 @@ class ToolEnv(MultiTurnEnv):
                 result = self.call_tool(parsed.tool)
                 if len(result.strip()) > 0:
                     # Tool executed successfully, return result
-                    return {"role": "user", "content": self.env_parser.format(result=result)} # Changed "result" to "result"
+                    return {"role": "user", "content": self.env_parser.format(result=result)} 
                 else:
                     # Tool executed but returned empty output
                     return {"role": "user", "content": "Error: Tool execution returned empty output."}
