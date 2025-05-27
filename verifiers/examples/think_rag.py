@@ -32,7 +32,7 @@ If a tool is needed, call it using JSON inside <tool>...</tool> tags:
 	• "name": the tool name
 	• "args": the arguments required by the tool
 
-Tool results will appear inside <tool_response>...</tool_response> tags. You can call tools multiple times if the search results don't contain context to answer the question.
+Tool results will appear inside <result>...</result> tags. You can call tools multiple times if the search results don't contain context to answer the question.
 
 Always put your final answer inside <answer>...</answer> tags.
 
@@ -77,10 +77,10 @@ I don't know the exact year offhand, so I'll search for it.
 {{"name": "search_rag", "args": {{"query": "first McDonald's establishment date", "num_results": 3}}}}
 </tool>
 ## User: This context is onlu returned when the tool is used
-<tool_response>
+<result>
 "Title: McDonald  
 Context: The original McDonald's was opened by Richard and Maurice McDonald in 1940 in San Bernardino, California."
-</tool_response>
+</result>
 ## Assistant:
 <think>
 Based on the result, I now know that the first McDonald's was opened in 1940.

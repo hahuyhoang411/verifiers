@@ -9,7 +9,7 @@ import torch
 class ToolRubric(Rubric):
     def __init__(self,
                  parser: XMLParser = XMLParser(fields=["think", ("tool", "answer")]),
-                 env_parser: XMLParser = XMLParser(fields=["tool_response"]), # Changed "result" to "tool_response"
+                 env_parser: XMLParser = XMLParser(fields=["result"]), # Changed "result" to "result"
                  tools: List[Callable] = []):
         self.parser = parser
         self.env_parser = env_parser
@@ -67,8 +67,8 @@ class ToolRubric(Rubric):
                 if hasattr(parsed, 'tool') and parsed.tool is not None:
                     if j + 1 < len(trajectory) and trajectory[j + 1]['role'] == 'user':
                         parsed_response = self.env_parser.parse(trajectory[j + 1]['content'])
-                        # Changed "result" to "tool_response" below
-                        if hasattr(parsed_response, 'tool_response') and parsed_response.tool_response is not None and not parsed_response.tool_response.startswith("Error:"):
+                        # Changed "result" to "result" below
+                        if hasattr(parsed_response, 'result') and parsed_response.result is not None and not parsed_response.result.startswith("Error:"):
                             return True
         return False
 
